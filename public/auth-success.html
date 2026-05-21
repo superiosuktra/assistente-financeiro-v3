@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autenticação bem-sucedida</title>
+  <style>
+    body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;background:#f0f0f0;margin:0}
+    .card{background:white;padding:2rem;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,.1);text-align:center}
+    h1{color:#01696f;margin:0 0 0.5rem}
+    p{color:#666;margin:0.5rem 0;font-size:14px}
+    .btn{padding:0.75rem 1.5rem;background:#01696f;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;text-decoration:none;display:inline-block;margin-top:1rem}
+    .btn:hover{background:#0c4e54}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>✓ Autenticação bem-sucedida!</h1>
+    <p id="email"></p>
+    <p>Redirecionando em <span id="countdown">5</span> segundos...</p>
+    <a href="/" class="btn">Voltar ao app</a>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email');
+    if (email) document.getElementById('email').textContent = `Conectado como: ${decodeURIComponent(email)}`;
+
+    let count = 5;
+    const countdown = setInterval(() => {
+      count--;
+      document.getElementById('countdown').textContent = count;
+      if (count === 0) {
+        clearInterval(countdown);
+        window.location.href = '/';
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

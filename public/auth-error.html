@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erro na autenticação</title>
+  <style>
+    body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;background:#f0f0f0;margin:0}
+    .card{background:white;padding:2rem;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,.1);text-align:center;max-width:400px}
+    h1{color:#a13544;margin:0 0 0.5rem}
+    p{color:#666;margin:0.5rem 0;font-size:14px}
+    .btn{padding:0.75rem 1.5rem;background:#01696f;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;text-decoration:none;display:inline-block;margin-top:1rem}
+    .btn:hover{background:#0c4e54}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>✗ Erro na autenticação</h1>
+    <p id="message">Ocorreu um erro ao processar sua autenticação.</p>
+    <p style="font-size:12px;color:#999">Verifique se configurou o GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET corretamente no .env</p>
+    <a href="/" class="btn">Voltar</a>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const message = params.get('message');
+    if (message) document.getElementById('message').textContent = decodeURIComponent(message);
+  </script>
+</body>
+</html>

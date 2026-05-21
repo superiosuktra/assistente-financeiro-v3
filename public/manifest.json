@@ -1,0 +1,25 @@
+{
+  "name": "Assistente Financeiro V3",
+  "short_name": "Financeiro",
+  "description": "Aplicação de gestão financeira com backup no Google Drive",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f2",
+  "theme_color": "#01696f",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2301696f' width='192' height='192'/><path fill='white' d='M60 120L84 92L108 108L132 72' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='132' cy='72' r='12' fill='white'/></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%2301696f' width='512' height='512'/><path fill='white' d='M160 320L224 256L288 288L384 192' stroke='white' stroke-width='32' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='384' cy='192' r='32' fill='white'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance"],
+  "screenshots": []
+}
