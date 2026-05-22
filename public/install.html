@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Instale o Assistente Financeiro V3 no seu dispositivo">
+  <meta name="theme-color" content="#01696f">
+  <title>Instalar - Assistente Financeiro V3</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Satoshi', system-ui, sans-serif;
+      background: linear-gradient(135deg, #01696f 0%, #0c4e54 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 500px;
+      width: 100%;
+      padding: 2rem;
+      text-align: center;
+    }
+    .logo {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      color: #01696f;
+      margin-bottom: 0.5rem;
+      font-size: 1.8rem;
+    }
+    .subtitle {
+      color: #6f6d67;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .qr-code {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 2px solid #f0f0f0;
+      margin: 2rem 0;
+    }
+    .qr-code img {
+      max-width: 100%;
+      height: auto;
+    }
+    .qr-label {
+      color: #6f6d67;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+      font-weight: 600;
+    }
+    .steps {
+      text-align: left;
+      margin: 2rem 0;
+      padding: 1.5rem;
+      background: #f9f8f5;
+      border-radius: 12px;
+    }
+    .steps h3 {
+      color: #01696f;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+    }
+    .step {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .step-number {
+      background: #01696f;
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+      text-align: left;
+    }
+    .step-content strong {
+      color: #28251d;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    .step-content p {
+      color: #6f6d67;
+      font-size: 0.9rem;
+    }
+    .buttons {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+      flex-direction: column;
+    }
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+    .btn-primary {
+      background: #01696f;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #0c4e54;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(1, 105, 111, 0.3);
+    }
+    .btn-secondary {
+      background: #f3f0ec;
+      color: #01696f;
+    }
+    .btn-secondary:hover {
+      background: #e6e0d8;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 2rem 0;
+      text-align: center;
+    }
+    .feature {
+      padding: 1rem;
+    }
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    .feature-text {
+      color: #6f6d67;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .loader {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f0ec;
+      border-top-color: #01696f;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .btn.loading .loader {
+      display: inline-block;
+      margin-right: 0.5rem;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 1.5rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+      .features {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">📱💻</div>
+    <h1>Instale Agora!</h1>
+    <p class="subtitle">Assistente Financeiro V3 - Sincronizado em todos os dispositivos</p>
+
+    <div class="qr-code">
+      <img id="qrCode" src="" alt="QR Code para instalação" width="300" height="300">
+      <p class="qr-label">Escaneie com seu celular para instalar</p>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🔄</div>
+        <div class="feature-text">Sincronização em Tempo Real</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📴</div>
+        <div class="feature-text">Funciona Offline</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">☁️</div>
+        <div class="feature-text">Backup no Drive</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔒</div>
+        <div class="feature-text">Totalmente Seguro</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <h3>Como Instalar</h3>
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <strong>Abra no Navegador</strong>
+          <p>Clique no botão abaixo ou abra o link no celular</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <strong>Clique em "Instalar"</strong>
+          <p>Menu > "Instalar app" ou "Add to Home Screen"</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <strong>Pronto!</strong>
+          <p>App instalado como app nativo. Abra quando quiser!</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="btn btn-primary" onclick="openApp()">↗️ Abrir Aplicação</button>
+      <button class="btn btn-secondary" onclick="copyLink()">📋 Copiar Link</button>
+    </div>
+  </div>
+
+  <script>
+    // Carregar QR Code
+    async function loadQRCode() {
+      try {
+        const response = await fetch('/api/install-qr');
+        const data = await response.json();
+        document.getElementById('qrCode').src = data.qrCode;
+      } catch (error) {
+        console.error('Erro ao carregar QR Code:', error);
+        document.getElementById('qrCode').src = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.href)}`;
+      }
+    }
+
+    function openApp() {
+      window.location.href = '/';
+    }
+
+    function copyLink() {
+      const link = window.location.origin;
+      navigator.clipboard.writeText(link).then(() => {
+        alert('✅ Link copiado: ' + link);
+      }).catch(() => {
+        prompt('Copie este link:', link);
+      });
+    }
+
+    // Detectar se é app ou navegador
+    if (window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches) {
+      // App já instalada
+      document.querySelector('.container').innerHTML = `
+        <div class="logo">✅</div>
+        <h1>App Instalada!</h1>
+        <p class="subtitle">Você já possui o Assistente Financeiro V3 instalado</p>
+        <button class="btn btn-primary" style="width: 100%; margin-top: 2rem;" onclick="openApp()">↗️ Abrir Agora</button>
+      `;
+    } else {
+      loadQRCode();
+    }
+  </script>
+</body>
+</html>

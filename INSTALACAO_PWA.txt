@@ -1,0 +1,10 @@
+// Atualizar index.html para adicionar scripts necessários
+// Adicione essas linhas ANTES de </body> no public/index.html:
+
+// <script src="js/websocket-sync.js"></script>
+// <script>
+//   // Inicializar WebSocket após carregar o app
+//   if (window.initWebSocket) {
+//     setTimeout(() => window.initWebSocket(), 1000);
+//   }
+// </script>

@@ -1,11 +1,28 @@
 {
-  "name": "Assistente Financeiro V3",
+  "name": "Assistente Financeiro V3 - PWA",
   "short_name": "Financeiro",
-  "description": "Aplicação de gestão financeira com backup no Google Drive",
+  "description": "Aplicação de gestão financeira com sincronização em tempo real entre dispositivos",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#f7f6f2",
   "theme_color": "#01696f",
+  "categories": ["finance", "productivity"],
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%23f7f6f2' width='540' height='720'/><text x='270' y='360' font-size='48' text-anchor='middle' fill='%2301696f'>Financeiro V3</text></svg>",
+      "sizes": "540x720",
+      "type": "image/svg+xml",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 720'><rect fill='%23f7f6f2' width='1280' height='720'/><text x='640' y='360' font-size='72' text-anchor='middle' fill='%2301696f'>Financeiro V3</text></svg>",
+      "sizes": "1280x720",
+      "type": "image/svg+xml",
+      "form_factor": "wide"
+    }
+  ],
   "icons": [
     {
       "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2301696f' width='192' height='192'/><path fill='white' d='M60 120L84 92L108 108L132 72' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='132' cy='72' r='12' fill='white'/></svg>",
@@ -14,12 +31,36 @@
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%2301696f' width='512' height='512'/><path fill='white' d='M160 320L224 256L288 288L384 192' stroke='white' stroke-width='32' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='384' cy='192' r='32' fill='white'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%2301696f' width='512' height='512' rx='100'/><path fill='white' d='M160 320L224 256L288 288L384 192' stroke='white' stroke-width='32' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='384' cy='192' r='32' fill='white'/></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["finance"],
-  "screenshots": []
+  "shortcuts": [
+    {
+      "name": "Novo Lançamento",
+      "short_name": "Lançamento",
+      "description": "Registre uma nova transação",
+      "url": "/?view=lancamentos",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2301696f' width='192' height='192'/><text x='96' y='120' font-size='80' text-anchor='middle' fill='white'>+</text></svg>", "sizes": "192x192", "type": "image/svg+xml"}]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "description": "Veja o resumo financeiro",
+      "url": "/?view=dashboard",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2301696f' width='192' height='192'/><text x='96' y='120' font-size='80' text-anchor='middle' fill='white'>📊</text></svg>", "sizes": "192x192", "type": "image/svg+xml"}]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text"
+    }
+  },
+  "prefer_related_applications": false
 }

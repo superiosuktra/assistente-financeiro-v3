@@ -1,12 +1,18 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const { google } = require('googleapis');
 const axios = require('axios');
 const path = require('path');
+const http = require('http');
+const WebSocket = require('ws');
+
+require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server, path: '/ws' });
+
 const PORT = process.env.PORT || 3000;
 
 // Configuração
@@ -35,7 +41,7 @@ app.use(session({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24h
+    maxAge: 24 * 60 * 60 * 1000
   }
 }));
 
@@ -45,12 +51,73 @@ const oauth2Client = new google.auth.OAuth2(
   GOOGLE_REDIRECT_URI
 );
 
+// ===== GERENCIAMENTO DE CONEXÕES WEBSOCKET =====
+const connectedClients = new Map();
+
+wss.on('connection', (ws, req) => {
+  const clientId = require('crypto').randomUUID();
+  const sessionId = req.headers['sec-websocket-key'];
+  
+  connectedClients.set(clientId, {
+    ws,
+    sessionId,
+    userId: null,
+    lastActivity: Date.now()
+  });
+
+  console.log(`📱 Cliente conectado: ${clientId}`);
+
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      // Registrar usuário
+      if (data.type === 'auth' && data.userId) {
+        const client = connectedClients.get(clientId);
+        if (client) {
+          client.userId = data.userId;
+        }
+      }
+
+      // Broadcast de alterações
+      if (data.type === 'dataSync') {
+        broadcastToUser(data.userId, {
+          type: 'dataUpdate',
+          data: data.payload,
+          timestamp: Date.now(),
+          source: clientId
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao processar mensagem WebSocket:', error);
+    }
+  });
+
+  ws.on('close', () => {
+    connectedClients.delete(clientId);
+    console.log(`📱 Cliente desconectado: ${clientId}`);
+  });
+
+  ws.on('error', (error) => {
+    console.error('Erro WebSocket:', error);
+  });
+});
+
+function broadcastToUser(userId, message) {
+  const clients = Array.from(connectedClients.values());
+  const userClients = clients.filter(c => c.userId === userId && c.ws.readyState === WebSocket.OPEN);
+  
+  userClients.forEach(client => {
+    try {
+      client.ws.send(JSON.stringify(message));
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+    }
+  });
+}
+
 // ===== ROTAS DE AUTENTICAÇÃO =====
 
-/**
- * GET /api/auth/google
- * Inicia o fluxo de autenticação OAuth 2.0
- */
 app.get('/api/auth/google', (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -60,10 +127,6 @@ app.get('/api/auth/google', (req, res) => {
   res.json({ authUrl });
 });
 
-/**
- * GET /api/auth/google/callback
- * Callback após consentimento do usuário
- */
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code } = req.query;
 
@@ -75,12 +138,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // Obtém informações do usuário
     const userinfo = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
 
-    // Armazena na sessão
     req.session.tokens = tokens;
     req.session.user = {
       email: userinfo.data.email,
@@ -88,7 +149,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
       name: userinfo.data.name
     };
 
-    // Redireciona para o frontend
     res.redirect(`/auth-success?email=${encodeURIComponent(userinfo.data.email)}`);
   } catch (error) {
     console.error('Erro no callback OAuth:', error.message);
@@ -96,10 +156,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
-/**
- * GET /api/auth/logout
- * Encerra a sessão
- */
 app.get('/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) return res.status(500).json({ error: 'Erro ao fazer logout' });
@@ -107,10 +163,6 @@ app.get('/api/auth/logout', (req, res) => {
   });
 });
 
-/**
- * GET /api/auth/status
- * Retorna o status da autenticação
- */
 app.get('/api/auth/status', (req, res) => {
   if (!req.session.user) {
     return res.json({ authenticated: false });
@@ -125,9 +177,6 @@ app.get('/api/auth/status', (req, res) => {
 
 // ===== ROTAS DO DRIVE =====
 
-/**
- * Middleware para verificar autenticação
- */
 const requireAuth = (req, res, next) => {
   if (!req.session.tokens) {
     return res.status(401).json({ error: 'Não autenticado. Faça login primeiro.' });
@@ -136,10 +185,6 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
-/**
- * POST /api/drive/upload
- * Faz upload do backup para o Google Drive
- */
 app.post('/api/drive/upload', requireAuth, async (req, res) => {
   try {
     const { data, fileName = 'assistente-financeiro-backup.json' } = req.body;
@@ -148,7 +193,6 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Dados inválidos' });
     }
 
-    // Validar tamanho (máx 5MB)
     const jsonStr = JSON.stringify(data);
     if (jsonStr.length > 5 * 1024 * 1024) {
       return res.status(413).json({ error: 'Backup muito grande (máx 5MB)' });
@@ -156,7 +200,6 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    // Procura arquivo existente
     const fileList = await drive.files.list({
       q: `name='${fileName}' and trashed=false`,
       spaces: 'drive',
@@ -172,20 +215,28 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
 
     let result;
     if (fileId) {
-      // Atualiza arquivo existente
       result = await drive.files.update({
         fileId,
         media,
         fields: 'id, name, modifiedTime'
       });
     } else {
-      // Cria novo arquivo
       result = await drive.files.create({
         resource: { name: fileName, mimeType: 'application/json' },
         media,
         fields: 'id, name, modifiedTime'
       });
       fileId = result.data.id;
+    }
+
+    // Notificar outros dispositivos
+    if (req.session.user) {
+      broadcastToUser(req.session.user.id, {
+        type: 'backupSync',
+        fileId,
+        timestamp: result.data.modifiedTime,
+        message: 'Backup sincronizado em outro dispositivo'
+      });
     }
 
     res.json({
@@ -201,10 +252,6 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/drive/download
- * Baixa o backup do Google Drive
- */
 app.get('/api/drive/download', requireAuth, async (req, res) => {
   try {
     const { fileId } = req.query;
@@ -227,10 +274,6 @@ app.get('/api/drive/download', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/drive/files
- * Lista arquivos de backup no Drive
- */
 app.get('/api/drive/files', requireAuth, async (req, res) => {
   try {
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
@@ -252,10 +295,6 @@ app.get('/api/drive/files', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/drive/files/:fileId
- * Deleta um arquivo do Drive
- */
 app.delete('/api/drive/files/:fileId', requireAuth, async (req, res) => {
   try {
     const { fileId } = req.params;
@@ -272,10 +311,6 @@ app.delete('/api/drive/files/:fileId', requireAuth, async (req, res) => {
 
 // ===== ROTAS DE VALIDAÇÃO =====
 
-/**
- * POST /api/validate/transaction
- * Valida um lançamento antes de salvar
- */
 app.post('/api/validate/transaction', (req, res) => {
   const { type, description, category, amount, date } = req.body;
   const errors = [];
@@ -314,7 +349,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    websocket: wss.clients.size + ' conectados'
   });
 });
 
@@ -327,10 +363,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
-  console.log(`📁 Google Drive API habilitada`);
-  console.log(`🔐 Autenticação OAuth 2.0 configurada\n`);
+  console.log(`📱 PWA: http://localhost:${PORT}`);
+  console.log(`🔄 WebSocket: ws://localhost:${PORT}/ws`);
+  console.log(`🔐 Autenticação OAuth 2.0 configurada`);
+  console.log(`☁️  Google Drive API habilitada\n`);
 });
 
-module.exports = app;
+module.exports = server;
