@@ -1,148 +1,252 @@
-(() => {
-  'use strict';
+// WebSocket Synchronization Module
+// Sincronização em tempo real entre abas/dispositivos via WebSocket
 
-  // ===== GERENCIAMENTO DE WEBSOCKET =====
-  let ws = null;
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  const RECONNECT_DELAY = 3000;
+class WebSocketSync {
+  constructor() {
+    this.ws = null;
+    this.isConnected = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 3000;
+    this.messageQueue = [];
+    this.listeners = new Map();
+  }
 
-  function initWebSocket() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      return;
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
+  connect() {
     try {
-      ws = new WebSocket(wsUrl);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      
+      console.log('🔗 Conectando ao WebSocket:', wsUrl);
+      this.ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        console.log('✅ WebSocket conectado');
-        reconnectAttempts = 0;
-        
-        // Enviar autenticação
-        if (window.state && window.state.sync && window.state.sync.userId) {
-          ws.send(JSON.stringify({
-            type: 'auth',
-            userId: window.state.sync.userId
-          }));
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          handleWebSocketMessage(message);
-        } catch (error) {
-          console.error('Erro ao processar mensagem WebSocket:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('❌ Erro WebSocket:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('📴 WebSocket desconectado');
-        attemptReconnect();
-      };
+      this.ws.onopen = () => this.handleOpen();
+      this.ws.onmessage = (event) => this.handleMessage(event);
+      this.ws.onerror = (error) => this.handleError(error);
+      this.ws.onclose = () => this.handleClose();
     } catch (error) {
-      console.error('Erro ao conectar WebSocket:', error);
-      attemptReconnect();
+      console.error('❌ Erro ao conectar WebSocket:', error);
+      this.scheduleReconnect();
     }
   }
 
-  function attemptReconnect() {
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      reconnectAttempts++;
-      console.log(`🔄 Tentando reconectar... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-      setTimeout(() => initWebSocket(), RECONNECT_DELAY * reconnectAttempts);
+  handleOpen() {
+    console.log('✅ WebSocket conectado');
+    this.isConnected = true;
+    this.reconnectAttempts = 0;
+
+    // Enviar mensagens pendentes
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      this.send(message);
+    }
+
+    // Notificar listeners
+    this.emit('connected', { timestamp: new Date() });
+  }
+
+  handleMessage(event) {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('📨 Mensagem recebida:', data);
+
+      // Emitir para listeners específicos
+      if (data.type) {
+        this.emit(data.type, data);
+      }
+
+      // Sincronizar dados se necessário
+      if (data.type === 'sync-update' && data.collection) {
+        this.syncLocalData(data);
+      }
+
+      // Notificar todas as abas abertas
+      if (window.BroadcastChannel) {
+        const bc = new BroadcastChannel('financeiro-sync');
+        bc.postMessage(data);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao processar mensagem WebSocket:', error);
+    }
+  }
+
+  handleError(error) {
+    console.error('❌ Erro WebSocket:', error);
+    this.emit('error', error);
+  }
+
+  handleClose() {
+    console.log('❌ WebSocket desconectado');
+    this.isConnected = false;
+    this.emit('disconnected', { timestamp: new Date() });
+    this.scheduleReconnect();
+  }
+
+  send(message) {
+    if (this.isConnected && this.ws) {
+      try {
+        this.ws.send(JSON.stringify(message));
+        console.log('📤 Mensagem enviada:', message.type);
+      } catch (error) {
+        console.error('❌ Erro ao enviar mensagem:', error);
+        this.messageQueue.push(message);
+      }
     } else {
-      console.warn('⚠️ Máximo de tentativas de reconexão atingido');
-      Toast.warning('Conexão perdida. Tente recarregar a página.');
+      console.warn('⚠️ WebSocket não conectado, enfileirando mensagem');
+      this.messageQueue.push(message);
     }
   }
 
-  function handleWebSocketMessage(message) {
-    switch (message.type) {
-      case 'dataUpdate':
-        // Atualizar dados quando outro dispositivo faz mudanças
-        if (message.source !== getClientId()) {
-          console.log('📱 Dados atualizados de outro dispositivo');
-          Object.assign(state, message.data);
-          save('Sincronizado de outro dispositivo');
-          renderAll();
-          Toast.info('📱 Dados sincronizados de outro dispositivo');
+  scheduleReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      const delay = this.reconnectDelay * this.reconnectAttempts;
+      console.log(`⏳ Reconectando em ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      setTimeout(() => this.connect(), delay);
+    } else {
+      console.error('❌ Falha ao reconectar após múltiplas tentativas');
+    }
+  }
+
+  // Sincronizar dados locais com servidor
+  syncLocalData(data) {
+    if (!data.collection) return;
+
+    const collection = data.collection;
+    const items = data.items || [];
+
+    // Recuperar dados locais
+    const localData = JSON.parse(localStorage.getItem(collection) || '[]');
+
+    if (data.action === 'update') {
+      // Mesclar dados
+      items.forEach(remoteItem => {
+        const localIndex = localData.findIndex(item => item.id === remoteItem.id);
+        if (localIndex >= 0) {
+          localData[localIndex] = { ...localData[localIndex], ...remoteItem, syncedAt: new Date().toISOString() };
+        } else {
+          localData.push({ ...remoteItem, syncedAt: new Date().toISOString() });
         }
-        break;
-
-      case 'backupSync':
-        console.log('☁️ Backup sincronizado:', message.fileId);
-        state.sync.lastBackup = new Date(message.timestamp).toLocaleString('pt-BR');
-        renderAll();
-        Toast.info('☁️ Backup sincronizado em outro dispositivo');
-        break;
-
-      case 'notification':
-        Toast.info(message.message);
-        break;
-
-      default:
-        console.log('Mensagem recebida:', message);
-    }
-  }
-
-  function sendWebSocketMessage(type, payload) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type,
-        userId: window.state?.sync?.userId,
-        payload,
-        timestamp: Date.now()
-      }));
-    } else {
-      console.warn('⚠️ WebSocket não está conectado');
-    }
-  }
-
-  function getClientId() {
-    let clientId = localStorage.getItem('clientId');
-    if (!clientId) {
-      clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      localStorage.setItem('clientId', clientId);
-    }
-    return clientId;
-  }
-
-  // ===== INTEGRAÇÃO COM APP PRINCIPAL =====
-  const originalSave = window.save;
-  window.save = function(status = 'Salvo localmente') {
-    // Chamar função original
-    if (originalSave) originalSave.call(this, status);
-
-    // Sincronizar via WebSocket
-    if (window.state) {
-      sendWebSocketMessage('dataSync', window.state);
-    }
-  };
-
-  // Substituir função de backup
-  const originalBackup = window.uploadBackup;
-  window.uploadBackup = async function() {
-    const result = await originalBackup.call(this);
-    if (result) {
-      // Notificar outros dispositivos
-      sendWebSocketMessage('backup', {
-        fileId: window.state.sync.driveFileId,
-        timestamp: new Date().toISOString()
+      });
+    } else if (data.action === 'delete') {
+      items.forEach(remoteItem => {
+        const index = localData.findIndex(item => item.id === remoteItem.id);
+        if (index >= 0) {
+          localData.splice(index, 1);
+        }
       });
     }
-    return result;
-  };
 
-  // Exportar funções
-  window.initWebSocket = initWebSocket;
-  window.sendWebSocketMessage = sendWebSocketMessage;
-})();
+    localStorage.setItem(collection, JSON.stringify(localData));
+    console.log(`✅ ${collection} sincronizado (${items.length} itens)`);
+
+    // Atualizar UI
+    window.dispatchEvent(new CustomEvent('data-synced', { detail: { collection, items } }));
+  }
+
+  // Publicar evento de sincronização
+  publishSync(collection, action, items) {
+    this.send({
+      type: 'sync-update',
+      collection,
+      action,
+      items,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Sistema de eventos
+  on(eventName, callback) {
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, []);
+    }
+    this.listeners.get(eventName).push(callback);
+  }
+
+  off(eventName, callback) {
+    if (this.listeners.has(eventName)) {
+      const callbacks = this.listeners.get(eventName);
+      const index = callbacks.indexOf(callback);
+      if (index > -1) {
+        callbacks.splice(index, 1);
+      }
+    }
+  }
+
+  emit(eventName, data) {
+    if (this.listeners.has(eventName)) {
+      this.listeners.get(eventName).forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error(`❌ Erro ao executar listener para ${eventName}:`, error);
+        }
+      });
+    }
+  }
+
+  disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
+  getStatus() {
+    return {
+      connected: this.isConnected,
+      reconnectAttempts: this.reconnectAttempts,
+      queuedMessages: this.messageQueue.length
+    };
+  }
+}
+
+// Instância global
+window.wsSync = new WebSocketSync();
+
+// Inicializar WebSocket
+function initWebSocket() {
+  console.log('🚀 Inicializando WebSocket Sync');
+  window.wsSync.connect();
+
+  // Atualizar status na UI
+  window.wsSync.on('connected', () => {
+    const statusEl = document.getElementById('saveStatus');
+    if (statusEl) {
+      statusEl.textContent = '🔗 Sincronizado';
+      statusEl.style.color = 'var(--color-success)';
+    }
+  });
+
+  window.wsSync.on('disconnected', () => {
+    const statusEl = document.getElementById('saveStatus');
+    if (statusEl) {
+      statusEl.textContent = '⚠️ Offline';
+      statusEl.style.color = 'var(--color-warning)';
+    }
+  });
+
+  // Sincronizar quando dados são salvos localmente
+  window.addEventListener('data-saved', (event) => {
+    const { collection, action, items } = event.detail;
+    window.wsSync.publishSync(collection, action, items);
+  });
+
+  // Sincronizar entre abas
+  if (window.BroadcastChannel) {
+    const bc = new BroadcastChannel('financeiro-sync');
+    bc.onmessage = (event) => {
+      const data = event.data;
+      console.log('📨 Mensagem de outra aba:', data);
+      
+      if (data.type === 'sync-update' && data.collection) {
+        window.wsSync.syncLocalData(data);
+      }
+    };
+  }
+}
+
+// Exportar para uso global
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { WebSocketSync, initWebSocket };
+}
