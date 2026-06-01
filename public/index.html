@@ -3,10 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Assistente Financeiro V3 - Gestão financeira com sincronização em tempo real">
+  <meta name="theme-color" content="#01696f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Financeiro">
   <title>Assistente Financeiro V3</title>
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect x='4' y='4' width='40' height='40' rx='12' stroke='%2301696f' stroke-width='3' fill='none'/><path d='M15 30L22 23L27 27L34 18' stroke='%2301696f' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/><circle cx='34' cy='18' r='3' fill='%2301696f'/></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2301696f' width='192' height='192'/><path fill='white' d='M60 120L84 92L108 108L132 72' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='132' cy='72' r='12' fill='white'/></svg>">
   <link rel="stylesheet" href="styles-enhancements.css">
   <style>
     :root,[data-theme="light"]{--text-xs:clamp(.75rem,.7rem + .25vw,.875rem);--text-sm:clamp(.875rem,.8rem + .35vw,1rem);--text-base:clamp(1rem,.95rem + .25vw,1.125rem);--text-lg:clamp(1.125rem,1rem + .75vw,1.5rem);--text-xl:clamp(1.5rem,1.2rem + 1.25vw,2.25rem);--space-2:.5rem;--space-3:.75rem;--space-4:1rem;--space-5:1.25rem;--space-6:1.5rem;--space-8:2rem;--space-10:2.5rem;--color-bg:#f7f6f2;--color-surface:#f9f8f5;--color-surface-2:#fbfbf9;--color-surface-offset:#f3f0ec;--color-border:#d4d1ca;--color-divider:#dcd9d5;--color-text:#28251d;--color-text-muted:#6f6d67;--color-text-inverse:#f9f8f4;--color-primary:#01696f;--color-primary-hover:#0c4e54;--color-success:#437a22;--color-warning:#964219;--color-error:#a13544;--color-blue:#006494;--radius-md:.75rem;--radius-lg:1rem;--radius-xl:1.25rem;--radius-full:9999px;--shadow-sm:0 1px 2px rgba(30,25,20,.06);--shadow-md:0 10px 30px rgba(30,25,20,.08);--font-body:'Satoshi',system-ui,sans-serif}
@@ -40,7 +47,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <svg class="logo" viewBox="0 0 48 48" fill="none" aria-label="Logo"><rect x="4" y="4" width="40" height="40" rx="12" stroke="currentColor" stroke-width="3"></rect><path d="M15 30L22 23L27 27L34 18" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="34" cy="18" r="3" fill="currentColor"></circle></svg>
-        <div><strong>Financeiro+ V3</strong><span>Backup no Drive com autenticação segura</span></div>
+        <div><strong>Financeiro+ V3</strong><span>Sincronização em tempo real 🔄</span></div>
       </div>
       <nav class="nav">
         <button class="nav-btn active" data-view-btn="dashboard">Resumo</button>
@@ -52,8 +59,8 @@
         <button class="nav-btn" data-view-btn="dicas">Dicas</button>
       </nav>
       <div class="drive-box">
-        <strong>Drive</strong>
-        <p>Entre com sua conta Google para salvar e restaurar seus dados de forma segura.</p>
+        <strong>📱 Multi-Dispositivo</strong>
+        <p>Dados sincronizados automaticamente entre celular e PC.</p>
       </div>
     </aside>
 
@@ -63,7 +70,7 @@
           <button class="icon-btn mobile-toggle" id="menuToggle">☰</button>
           <div>
             <h1>Assistente financeiro V3</h1>
-            <p>Gestão financeira com autenticação OAuth 2.0 segura.</p>
+            <p>✨ Sincronização em tempo real entre dispositivos + Google Drive</p>
           </div>
         </div>
         <div class="header-actions">
@@ -249,5 +256,22 @@
   <script src="js/badges.js"></script>
   <script src="js/animations.js"></script>
   <script src="js/export.js"></script>
+  <script src="js/websocket-sync.js"></script>
+  <script>
+    // Inicializar WebSocket após carregar o app
+    setTimeout(() => {
+      if (window.initWebSocket) {
+        window.initWebSocket();
+        console.log('✅ WebSocket inicializado para sincronização em tempo real');
+      }
+    }, 1000);
+
+    // Registrar Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('✅ Service Worker registrado'))
+        .catch(err => console.log('⚠️ Erro ao registrar Service Worker:', err));
+    }
+  </script>
 </body>
 </html>
