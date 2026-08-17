@@ -21,8 +21,9 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'seu-secret-super-seguro';
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-  throw new Error('❌ GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET são obrigatórios no .env');
+const GOOGLE_OAUTH_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+if (!GOOGLE_OAUTH_ENABLED) {
+  console.warn('⚠️ GOOGLE_CLIENT_ID e/ou GOOGLE_CLIENT_SECRET não definidos — funcionalidades do Google (backup) estarão desabilitadas.');
 }
 
 // Middleware
@@ -45,11 +46,18 @@ app.use(session({
   }
 }));
 
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  GOOGLE_REDIRECT_URI
-);
+const oauth2Client = GOOGLE_OAUTH_ENABLED
+  ? new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI)
+  : null;
+
+// Global error handlers to avoid silent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason && (reason.stack || reason));
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err && (err.stack || err));
+  // Note: in production you might want to exit process after logging
+});
 
 // ===== GERENCIAMENTO DE CONEXÕES WEBSOCKET =====
 const connectedClients = new Map();
@@ -57,7 +65,7 @@ const connectedClients = new Map();
 wss.on('connection', (ws, req) => {
   const clientId = require('crypto').randomUUID();
   const sessionId = req.headers['sec-websocket-key'];
-  
+
   connectedClients.set(clientId, {
     ws,
     sessionId,
@@ -70,7 +78,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      
+
       // Registrar usuário
       if (data.type === 'auth' && data.userId) {
         const client = connectedClients.get(clientId);
@@ -89,7 +97,7 @@ wss.on('connection', (ws, req) => {
         });
       }
     } catch (error) {
-      console.error('Erro ao processar mensagem WebSocket:', error);
+      console.error('Erro ao processar mensagem WebSocket:', error && (error.stack || error));
     }
   });
 
@@ -99,37 +107,52 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', (error) => {
-    console.error('Erro WebSocket:', error);
+    console.error('Erro WebSocket:', error && (error.stack || error));
   });
 });
 
 function broadcastToUser(userId, message) {
-  const clients = Array.from(connectedClients.values());
-  const userClients = clients.filter(c => c.userId === userId && c.ws.readyState === WebSocket.OPEN);
-  
-  userClients.forEach(client => {
-    try {
-      client.ws.send(JSON.stringify(message));
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-    }
-  });
+  try {
+    const clients = Array.from(connectedClients.values());
+    const userClients = clients.filter(c => c.userId === userId && c.ws.readyState === WebSocket.OPEN);
+
+    userClients.forEach(client => {
+      try {
+        client.ws.send(JSON.stringify(message));
+      } catch (error) {
+        console.error('Erro ao enviar mensagem:', error && (error.stack || error));
+      }
+    });
+  } catch (err) {
+    console.error('Erro no broadcastToUser:', err && (err.stack || err));
+  }
 }
 
 // ===== ROTAS DE AUTENTICAÇÃO =====
-
 app.get('/api/auth/google', (req, res) => {
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/userinfo.email'],
-    prompt: 'consent'
-  });
-  res.json({ authUrl });
+  if (!GOOGLE_OAUTH_ENABLED || !oauth2Client) {
+    return res.status(501).json({ error: 'Google OAuth não configurado no servidor' });
+  }
+
+  try {
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/userinfo.email'],
+      prompt: 'consent'
+    });
+    res.json({ authUrl });
+  } catch (err) {
+    console.error('Erro ao gerar URL de autenticação:', err && (err.stack || err));
+    res.status(500).json({ error: 'Erro ao iniciar autenticação' });
+  }
 });
 
 app.get('/api/auth/google/callback', async (req, res) => {
-  const { code } = req.query;
+  if (!GOOGLE_OAUTH_ENABLED || !oauth2Client) {
+    return res.redirect(`/auth-error?message=${encodeURIComponent('Google OAuth não configurado')}`);
+  }
 
+  const { code } = req.query;
   if (!code) {
     return res.status(400).json({ error: 'Código de autorização não fornecido' });
   }
@@ -151,16 +174,21 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
     res.redirect(`/auth-success?email=${encodeURIComponent(userinfo.data.email)}`);
   } catch (error) {
-    console.error('Erro no callback OAuth:', error.message);
-    res.redirect(`/auth-error?message=${encodeURIComponent(error.message)}`);
+    console.error('Erro no callback OAuth:', error && (error.stack || error));
+    res.redirect(`/auth-error?message=${encodeURIComponent(error && (error.message || 'erro desconhecido'))}`);
   }
 });
 
 app.get('/api/auth/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) return res.status(500).json({ error: 'Erro ao fazer logout' });
-    res.json({ success: true, message: 'Logout realizado' });
-  });
+  try {
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ error: 'Erro ao fazer logout' });
+      res.json({ success: true, message: 'Logout realizado' });
+    });
+  } catch (err) {
+    console.error('Erro ao destruir sessão:', err && (err.stack || err));
+    res.status(500).json({ error: 'Erro ao fazer logout' });
+  }
 });
 
 app.get('/api/auth/status', (req, res) => {
@@ -176,8 +204,10 @@ app.get('/api/auth/status', (req, res) => {
 });
 
 // ===== ROTAS DO DRIVE =====
-
 const requireAuth = (req, res, next) => {
+  if (!GOOGLE_OAUTH_ENABLED) {
+    return res.status(501).json({ error: 'Serviço de backup não disponível (Google não configurado)' });
+  }
   if (!req.session.tokens) {
     return res.status(401).json({ error: 'Não autenticado. Faça login primeiro.' });
   }
@@ -194,7 +224,7 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
     }
 
     const jsonStr = JSON.stringify(data);
-    if (jsonStr.length > 5 * 1024 * 1024) {
+    if (Buffer.byteLength(jsonStr, 'utf8') > 5 * 1024 * 1024) {
       return res.status(413).json({ error: 'Backup muito grande (máx 5MB)' });
     }
 
@@ -247,8 +277,8 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
       message: fileId ? 'Backup atualizado com sucesso' : 'Backup criado com sucesso'
     });
   } catch (error) {
-    console.error('Erro ao fazer upload:', error.message);
-    res.status(500).json({ error: `Erro ao fazer upload: ${error.message}` });
+    console.error('Erro ao fazer upload:', error && (error.stack || error));
+    res.status(500).json({ error: `Erro ao fazer upload: ${error && (error.message || 'erro desconhecido')}` });
   }
 });
 
@@ -261,16 +291,24 @@ app.get('/api/drive/download', requireAuth, async (req, res) => {
     }
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
-    const response = await drive.files.get(
-      { fileId, alt: 'media' },
-      { responseType: 'stream' }
-    );
+    const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
 
     res.setHeader('Content-Type', 'application/json');
+
+    response.data.on('error', (err) => {
+      console.error('Stream de download erro:', err && (err.stack || err));
+      if (!res.headersSent) res.status(500).json({ error: 'Erro ao transmitir arquivo' });
+      try { res.end(); } catch (e) {}
+    });
+
+    res.on('error', (err) => {
+      console.error('Erro de resposta ao cliente:', err && (err.stack || err));
+    });
+
     response.data.pipe(res);
   } catch (error) {
-    console.error('Erro ao baixar backup:', error.message);
-    res.status(500).json({ error: `Erro ao baixar backup: ${error.message}` });
+    console.error('Erro ao baixar backup:', error && (error.stack || error));
+    res.status(500).json({ error: `Erro ao baixar backup: ${error && (error.message || 'erro desconhecido')}` });
   }
 });
 
@@ -290,8 +328,8 @@ app.get('/api/drive/files', requireAuth, async (req, res) => {
       count: fileList.data.files?.length || 0
     });
   } catch (error) {
-    console.error('Erro ao listar arquivos:', error.message);
-    res.status(500).json({ error: `Erro ao listar arquivos: ${error.message}` });
+    console.error('Erro ao listar arquivos:', error && (error.stack || error));
+    res.status(500).json({ error: `Erro ao listar arquivos: ${error && (error.message || 'erro desconhecido')}` });
   }
 });
 
@@ -304,13 +342,12 @@ app.delete('/api/drive/files/:fileId', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: 'Arquivo deletado' });
   } catch (error) {
-    console.error('Erro ao deletar arquivo:', error.message);
-    res.status(500).json({ error: `Erro ao deletar arquivo: ${error.message}` });
+    console.error('Erro ao deletar arquivo:', error && (error.stack || error));
+    res.status(500).json({ error: `Erro ao deletar arquivo: ${error && (error.message || 'erro desconhecido')}` });
   }
 });
 
 // ===== ROTAS DE VALIDAÇÃO =====
-
 app.post('/api/validate/transaction', (req, res) => {
   const { type, description, category, amount, date } = req.body;
   const errors = [];
@@ -327,10 +364,10 @@ app.post('/api/validate/transaction', (req, res) => {
   if (!category || category.trim().length < 1) {
     errors.push('Categoria obrigatória');
   }
-  if (isNaN(amount) || amount <= 0) {
+  if (isNaN(amount) || Number(amount) <= 0) {
     errors.push('Valor deve ser maior que zero');
   }
-  if (amount > 1000000) {
+  if (Number(amount) > 1000000) {
     errors.push('Valor muito alto (máx R$ 1.000.000)');
   }
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -350,16 +387,17 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    websocket: wss.clients.size + ' conectados'
+    websocket: (wss && wss.clients && typeof wss.clients.size === 'number') ? wss.clients.size + ' conectados' : 'unknown'
   });
 });
 
 // ===== TRATAMENTO DE ERROS =====
 app.use((err, req, res, next) => {
-  console.error('Erro não tratado:', err);
+  console.error('Erro não tratado:', err && (err.stack || err));
+  if (res.headersSent) return next(err);
   res.status(500).json({
     error: 'Erro interno do servidor',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: process.env.NODE_ENV === 'development' ? (err && err.message) : undefined
   });
 });
 
@@ -367,8 +405,8 @@ server.listen(PORT, () => {
   console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
   console.log(`📱 PWA: http://localhost:${PORT}`);
   console.log(`🔄 WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`🔐 Autenticação OAuth 2.0 configurada`);
-  console.log(`☁️  Google Drive API habilitada\n`);
+  console.log(`🔐 Autenticação OAuth 2.0 ${GOOGLE_OAUTH_ENABLED ? 'configurada' : 'não configurada'}`);
+  console.log(`☁️  Google Drive API ${GOOGLE_OAUTH_ENABLED ? 'habilitada' : 'desabilitada'}\n`);
 });
 
 module.exports = server;
