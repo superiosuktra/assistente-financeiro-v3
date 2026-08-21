@@ -6,6 +6,7 @@ const axios = require('axios');
 const path = require('path');
 const http = require('http');
 const WebSocket = require('ws');
+const crypto = require('crypto');
 
 require('dotenv').config();
 
@@ -26,12 +27,43 @@ if (!GOOGLE_OAUTH_ENABLED) {
   console.warn('⚠️ GOOGLE_CLIENT_ID e/ou GOOGLE_CLIENT_SECRET não definidos — funcionalidades do Google (backup) estarão desabilitadas.');
 }
 
-// Middleware
+// ===== VALIDADORES DE SEGURANÇA =====
+function validateFileId(fileId) {
+  return fileId && /^[a-zA-Z0-9_-]{1,128}$/.test(fileId);
+}
+
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return email && emailRegex.test(email);
+}
+
+function escapeGoogleDriveQuery(str) {
+  return String(str || '').replace(/'/g, "\\'")
+    .replace(/\\\\/g, '\\\\');
+}
+
+// ===== MIDDLEWARE =====
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
+
+// CORS Seguro - ✅ CORRIGIDO
+const allowedOrigins = (process.env.FRONTEND_URL || '').split(',').filter(Boolean);
+
+if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+  console.error('🔒 ERRO CRÍTICO: FRONTEND_URL não definido em produção!');
+  process.exit(1);
+}
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin.trim())) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS não permitido'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
 app.use(session({
@@ -40,8 +72,8 @@ app.use(session({
   saveUninitialized: true,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true, // ✅ CORRIGIDO - Sempre true (forçar HTTPS)
+    sameSite: 'strict',
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
@@ -56,40 +88,44 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err && (err.stack || err));
-  // Note: in production you might want to exit process after logging
 });
 
 // ===== GERENCIAMENTO DE CONEXÕES WEBSOCKET =====
 const connectedClients = new Map();
 
 wss.on('connection', (ws, req) => {
-  const clientId = require('crypto').randomUUID();
-  const sessionId = req.headers['sec-websocket-key'];
+  const clientId = crypto.randomUUID();
+  
+  // ✅ CORRIGIDO - Validar usuário via sessão, não via mensagem
+  const userId = req.session?.user?.id;
+  if (!userId) {
+    console.warn('❌ WebSocket: Conexão sem autenticação recusada');
+    ws.close(1008, 'Não autenticado');
+    return;
+  }
 
   connectedClients.set(clientId, {
     ws,
-    sessionId,
-    userId: null,
+    userId,
     lastActivity: Date.now()
   });
 
-  console.log(`📱 Cliente conectado: ${clientId}`);
+  console.log(`📱 Cliente conectado: ${clientId} (user: ${userId})`);
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
 
-      // Registrar usuário
-      if (data.type === 'auth' && data.userId) {
-        const client = connectedClients.get(clientId);
-        if (client) {
-          client.userId = data.userId;
-        }
+      // ✅ CORRIGIDO - Validar tipos de mensagem
+      const validTypes = ['auth', 'dataSync', 'ping'];
+      if (!validTypes.includes(data.type)) {
+        console.warn(`⚠️ Tipo inválido recebido: ${data.type}`);
+        return;
       }
 
-      // Broadcast de alterações
-      if (data.type === 'dataSync') {
-        broadcastToUser(data.userId, {
+      // ✅ CORRIGIDO - Usar userId da sessão, não da mensagem
+      if (data.type === 'dataSync' && data.payload) {
+        broadcastToUser(userId, {
           type: 'dataUpdate',
           data: data.payload,
           timestamp: Date.now(),
@@ -165,11 +201,16 @@ app.get('/api/auth/google/callback', async (req, res) => {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
 
+    // ✅ CORRIGIDO - Validar email antes de salvar
+    if (!validateEmail(userinfo.data.email)) {
+      return res.redirect(`/auth-error?message=${encodeURIComponent('Email inválido do Google')}`);
+    }
+
     req.session.tokens = tokens;
     req.session.user = {
-      email: userinfo.data.email,
-      id: userinfo.data.id,
-      name: userinfo.data.name
+      email: userinfo.data.email.toLowerCase(),
+      id: String(userinfo.data.id),
+      name: String(userinfo.data.name || '').trim()
     };
 
     res.redirect(`/auth-success?email=${encodeURIComponent(userinfo.data.email)}`);
@@ -183,6 +224,7 @@ app.get('/api/auth/logout', (req, res) => {
   try {
     req.session.destroy((err) => {
       if (err) return res.status(500).json({ error: 'Erro ao fazer logout' });
+      res.clearCookie('connect.sid');
       res.json({ success: true, message: 'Logout realizado' });
     });
   } catch (err) {
@@ -230,8 +272,10 @@ app.post('/api/drive/upload', requireAuth, async (req, res) => {
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
+    // ✅ CORRIGIDO - Escapar fileName para evitar SQL Injection
+    const escapedFileName = escapeGoogleDriveQuery(fileName);
     const fileList = await drive.files.list({
-      q: `name='${fileName}' and trashed=false`,
+      q: `name='${escapedFileName}' and trashed=false`,
       spaces: 'drive',
       fields: 'files(id, name, modifiedTime)',
       pageSize: 1
@@ -286,8 +330,9 @@ app.get('/api/drive/download', requireAuth, async (req, res) => {
   try {
     const { fileId } = req.query;
 
-    if (!fileId) {
-      return res.status(400).json({ error: 'fileId é obrigatório' });
+    // ✅ CORRIGIDO - Validar formato de fileId
+    if (!validateFileId(fileId)) {
+      return res.status(400).json({ error: 'fileId inválido' });
     }
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
@@ -314,17 +359,22 @@ app.get('/api/drive/download', requireAuth, async (req, res) => {
 
 app.get('/api/drive/files', requireAuth, async (req, res) => {
   try {
+    const pageToken = req.query.pageToken || undefined;
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    
+    // ✅ CORRIGIDO - Adicionar suporte a pagination
     const fileList = await drive.files.list({
       q: `name contains 'assistente-financeiro' and trashed=false`,
       spaces: 'drive',
-      fields: 'files(id, name, modifiedTime, size)',
+      fields: 'files(id, name, modifiedTime, size), nextPageToken',
       pageSize: 10,
+      pageToken,
       orderBy: 'modifiedTime desc'
     });
 
     res.json({
       files: fileList.data.files || [],
+      nextPageToken: fileList.data.nextPageToken || null,
       count: fileList.data.files?.length || 0
     });
   } catch (error) {
@@ -336,6 +386,11 @@ app.get('/api/drive/files', requireAuth, async (req, res) => {
 app.delete('/api/drive/files/:fileId', requireAuth, async (req, res) => {
   try {
     const { fileId } = req.params;
+
+    // ✅ CORRIGIDO - Validar fileId
+    if (!validateFileId(fileId)) {
+      return res.status(400).json({ error: 'fileId inválido' });
+    }
 
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     await drive.files.delete({ fileId });
@@ -352,26 +407,37 @@ app.post('/api/validate/transaction', (req, res) => {
   const { type, description, category, amount, date } = req.body;
   const errors = [];
 
+  // ✅ CORRIGIDO - Validação completa e robusta
+  const desc = String(description || '').trim();
+  if (desc.length < 1) {
+    errors.push('Descrição obrigatória');
+  } else if (desc.length > 100) {
+    errors.push('Descrição muito longa (máx 100 caracteres)');
+  }
+
+  const cat = String(category || '').trim();
+  if (cat.length < 1) {
+    errors.push('Categoria obrigatória');
+  }
+
   if (!type || !['income', 'expense'].includes(type)) {
     errors.push('Tipo inválido (deve ser "income" ou "expense")');
   }
-  if (!description || description.trim().length < 1) {
-    errors.push('Descrição obrigatória');
-  }
-  if (description && description.length > 100) {
-    errors.push('Descrição muito longa (máx 100 caracteres)');
-  }
-  if (!category || category.trim().length < 1) {
-    errors.push('Categoria obrigatória');
-  }
-  if (isNaN(amount) || Number(amount) <= 0) {
+
+  const numAmount = Number(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
     errors.push('Valor deve ser maior que zero');
-  }
-  if (Number(amount) > 1000000) {
+  } else if (numAmount > 1000000) {
     errors.push('Valor muito alto (máx R$ 1.000.000)');
   }
+
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     errors.push('Data inválida (formato: YYYY-MM-DD)');
+  } else {
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      errors.push('Data não é válida');
+    }
   }
 
   if (errors.length > 0) {

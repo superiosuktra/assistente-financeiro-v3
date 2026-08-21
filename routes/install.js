@@ -5,7 +5,8 @@ const app = express();
 
 // Servir instalador PWA
 app.get('/install', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'install.html'));
+  // ✅ CORRIGIDO - Caminho correto para arquivo em public/
+  res.sendFile(path.join(__dirname, '..', 'public', 'install.html'));
 });
 
 // QR Code endpoint
